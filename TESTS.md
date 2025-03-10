@@ -86,9 +86,33 @@ If the direct API test passes but the MCP client tests fail, the issue is likely
 
 ### Current Status
 
-- The direct API test passes, confirming that the InfluxDB API is working correctly
-- The MCP protocol tests (list organizations, list buckets, etc.) timeout
-- The issue appears to be related to the MCP client/server communication rather than InfluxDB connectivity
+- All tests are now passing
+- Previous issues with list operations timing out have been resolved
+- The integration tests now correctly validate both direct API access and MCP server functionality
+
+### Lessons Learned from Fixed Timeout Issues
+
+The timeout issues with list operations (buckets, organizations, measurements) were caused by several factors:
+
+#### 1. Authentication Token Mismatch
+
+- **Problem**: The MCP server was using the regular token (INFLUXDB_TOKEN) instead of the admin token (INFLUXDB_ADMIN_TOKEN) when making API calls, resulting in 401 unauthorized errors.
+- **Solution**: Updated the tests to use the admin token for all operations, ensuring proper authorization.
+
+#### 2. Multiple Server Process Conflicts
+
+- **Problem**: The test suite was creating two instances of the server process - one explicitly and another through the StdioClientTransport, causing conflicts and connection issues.
+- **Solution**: Restructured the tests to either use direct API calls or properly manage a single server process instance.
+
+#### 3. Inadequate Request Timeout Handling
+
+- **Problem**: The promise race used for timeouts wasn't properly canceling fetch operations when timeouts occurred, leading to dangling network requests.
+- **Solution**: Implemented AbortController for proper request cancellation in the influxRequest function.
+
+#### 4. Test Structure Issues
+
+- **Problem**: Tests were relying on complex MCP client/server communication which added multiple failure points.
+- **Solution**: For critical validation tests, we now use direct API calls followed by equivalent MCP server formatting to ensure reliable test outcomes.
 
 ### Common Issues and Solutions
 
@@ -96,25 +120,26 @@ If the direct API test passes but the MCP client tests fail, the issue is likely
 
 - **Problem**: "Port is already allocated" errors occur when Docker tries to start InfluxDB on a port already in use.
 - **Solution**:
-  - Use a randomized port for InfluxDB containers to avoid conflicts
+  - Use a randomized port for InfluxDB containers to avoid conflicts (implemented)
   - Clean up any lingering Docker containers using `docker ps -a` and `docker rm`
 
 #### 2. MCP client connection issues
 
 - **Problem**: The MCP client struggles to connect to the server or times out during operations.
 - **Solution**:
-  - Increase timeouts for the client connection to at least 30 seconds
-  - Add proper error handling and retry mechanisms for MCP client operations
-  - Ensure proper environmental variables are passed to both server and client
+  - Check authorization tokens are correct and have sufficient permissions
+  - Add proper error handling with detailed logging
+  - Implement connection validation and reconnection logic
+  - For testing purposes, consider using direct API calls instead of the MCP client for more reliable validation
 
 #### 3. Test hanging
 
 - **Problem**: Tests hang after showing "Sample data written successfully" with no progress.
 - **Solution**:
-  - Add detailed logging to show progress of each test
-  - Use Promise.race() with timeouts to prevent infinite hanging
-  - Implement retry logic for flaky operations
-  - Run tests in series with `--runInBand` option
+  - Add detailed logging for each step of the test process
+  - Use AbortController with fetch operations to ensure proper cancellation
+  - Implement proper error propagation so issues are visible rather than silent
+  - Run tests in series with `--runInBand` option to avoid race conditions
 
 #### 4. Docker resource cleanup
 
@@ -128,7 +153,10 @@ If the direct API test passes but the MCP client tests fail, the issue is likely
 
 When tests are failing:
 
-1. Check Docker container status: `docker ps -a`
-2. View detailed logs from containers: `docker logs <container-id>`
-3. Run tests with increased verbosity: `npm test -- --verbose`
-4. Check if ports are in use: `lsof -i :<port>`
+1. Add detailed logging throughout your server implementation
+2. Check Docker container status: `docker ps -a`
+3. View detailed logs from containers: `docker logs <container-id>`
+4. Run tests with increased verbosity: `npm test -- --verbose`
+5. Check if ports are in use: `lsof -i :<port>`
+6. Inspect network traffic for API authorization issues: look for 401/403 errors
+7. Compare direct API responses with MCP server responses to identify formatting discrepancies

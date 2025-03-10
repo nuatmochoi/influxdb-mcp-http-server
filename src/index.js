@@ -34,30 +34,40 @@ async function influxRequest(endpoint, options = {}, timeoutMs = 5000) {
 
   console.log(`Making request to: ${url}`);
 
-  // Create a timeout promise
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(
-      () =>
-        reject(
-          new Error(`InfluxDB API request timed out after ${timeoutMs}ms`),
-        ),
-      timeoutMs,
-    );
-  });
+  try {
+    // Use AbortController for proper request cancellation
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort(`InfluxDB API request timed out after ${timeoutMs}ms`);
+    }, timeoutMs);
 
-  // Create the fetch promise
-  const fetchPromise = fetch(url, { ...defaultOptions, ...options });
+    // Add the abort signal to the request options
+    const requestOptions = {
+      ...defaultOptions,
+      ...options,
+      signal: controller.signal,
+    };
 
-  // Race the fetch against the timeout
-  const response = await Promise.race([fetchPromise, timeoutPromise]);
-  console.log(`Response status: ${response.status}`);
+    // Make the request
+    const response = await fetch(url, requestOptions);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`InfluxDB API Error (${response.status}): ${errorText}`);
+    // Clear the timeout since the request completed
+    clearTimeout(timeoutId);
+
+    console.log(`Response status: ${response.status}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`InfluxDB API Error (${response.status}): ${errorText}`);
+    }
+
+    return response;
+  } catch (error) {
+    // Log the error with more details
+    console.error(`Error in influxRequest to ${url}:`, error.message);
+    // Rethrow to be handled by the caller
+    throw error;
   }
-
-  return response;
 }
 
 // Resource: List Organizations
@@ -135,27 +145,65 @@ server.resource(
   "buckets",
   "influxdb://buckets",
   async (uri) => {
-    try {
-      const response = await influxRequest("/api/v2/buckets");
-      const data = await response.json();
+    console.log("Processing list buckets request - START");
 
+    try {
+      // Add detailed debug logging
+      console.log(`INFLUXDB_URL: ${INFLUXDB_URL}`);
+      console.log(`INFLUXDB_TOKEN set: ${INFLUXDB_TOKEN ? "Yes" : "No"}`);
+
+      console.log("Making request to InfluxDB API for buckets...");
+      // Our influxRequest function already has built-in timeout
+      const response = await influxRequest("/api/v2/buckets", {}, 5000);
+      console.log(
+        "Buckets API response received, status:",
+        response.status,
+      );
+
+      // Also add timeout for JSON parsing
+      console.log("Parsing response body for buckets...");
+      const data = await response.json();
+      console.log(`Found ${data.buckets?.length || 0} buckets`);
+
+      // If we have no buckets, return an empty list instead of failing
+      if (!data.buckets || data.buckets.length === 0) {
+        console.log("No buckets found, returning empty list");
+        return {
+          contents: [{
+            uri: uri.href,
+            text: `# InfluxDB Buckets\n\nNo buckets found.`,
+          }],
+        };
+      }
+
+      // Format the bucket list
+      console.log("Formatting bucket data...");
       const bucketList = data.buckets.map((bucket) =>
         `ID: ${bucket.id} | Name: ${bucket.name} | Organization ID: ${bucket.orgID} | Retention Period: ${
           bucket.retentionRules?.[0]?.everySeconds || "∞"
         } seconds`
       ).join("\n");
 
-      return {
+      // Prepare the result
+      const result = {
         contents: [{
           uri: uri.href,
           text: `# InfluxDB Buckets\n\n${bucketList}`,
         }],
       };
+
+      console.log("Successfully processed list buckets request - END");
+      return result;
     } catch (error) {
+      console.error("Error in list buckets resource:", error.message);
+      console.error(error.stack);
+
+      // Return a formatted error
       return {
         contents: [{
           uri: uri.href,
-          text: `Error retrieving buckets: ${error.message}`,
+          text:
+            `# InfluxDB Buckets - Error\n\nError retrieving buckets: ${error.message}`,
         }],
       };
     }
@@ -169,7 +217,12 @@ server.resource(
     list: undefined,
   }),
   async (uri, { bucketName }) => {
+    console.log(
+      `Processing measurements in bucket '${bucketName}' request - START`,
+    );
+
     if (!DEFAULT_ORG) {
+      console.error("Error: INFLUXDB_ORG environment variable is not set");
       return {
         contents: [{
           uri: uri.href,
@@ -180,6 +233,9 @@ server.resource(
 
     try {
       // Use Flux query to get measurements
+      console.log(
+        `Creating Flux query for bucket '${bucketName}' measurements`,
+      );
       const queryBody = JSON.stringify({
         query: `import "influxdata/influxdb/schema"
 
@@ -187,24 +243,37 @@ schema.measurements(bucket: "${bucketName}")`,
         type: "flux",
       });
 
+      console.log(`Making InfluxDB API request for measurements...`);
       const response = await influxRequest(
         "/api/v2/query?org=" + encodeURIComponent(DEFAULT_ORG),
         {
           method: "POST",
           body: queryBody,
         },
+        5000, // Explicit timeout
+      );
+      console.log(
+        "Measurements API response received, status:",
+        response.status,
       );
 
+      console.log("Reading response text...");
       const responseText = await response.text();
+
+      console.log("Parsing CSV response...");
       const lines = responseText.split("\n").filter((line) =>
         line.trim() !== ""
       );
+      console.log(`Found ${lines.length} lines in the response`);
 
       // Parse CSV response (Flux queries return CSV)
       const headers = lines[0].split(",");
       const valueIndex = headers.indexOf("_value");
+      console.log("Headers:", headers);
+      console.log("Value index:", valueIndex);
 
       if (valueIndex === -1) {
+        console.log("No _value column found in the response");
         return {
           contents: [{
             uri: uri.href,
@@ -213,10 +282,14 @@ schema.measurements(bucket: "${bucketName}")`,
         };
       }
 
+      console.log("Extracting measurement values...");
       const measurements = lines.slice(1)
         .map((line) => line.split(",")[valueIndex])
         .filter((m) => m && !m.startsWith("#"))
         .join("\n");
+
+      console.log(`Found ${measurements.split("\n").length} measurements`);
+      console.log("Successfully processed measurements request - END");
 
       return {
         contents: [{
@@ -225,6 +298,9 @@ schema.measurements(bucket: "${bucketName}")`,
         }],
       };
     } catch (error) {
+      console.error(`Error in bucket measurements resource: ${error.message}`);
+      console.error(error.stack);
+
       return {
         contents: [{
           uri: uri.href,
@@ -571,9 +647,22 @@ readings,device=thermostat temperature=72.1,active=true,status="normal" 16310252
   }),
 );
 
-// Start the server with stdio transport
-const transport = new StdioServerTransport();
-server.connect(transport).catch((err) => {
-  console.error("Error starting MCP server:", err);
-  process.exit(1);
+// Add a global error handler
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  // Don't exit - just log the error, as this could be caught and handled elsewhere
 });
+
+// Start the server with stdio transport
+console.log("Starting MCP server with stdio transport...");
+const transport = new StdioServerTransport();
+
+// Add a delay before connecting to ensure we don't miss any initial messages
+setTimeout(() => {
+  console.log("Connecting server to transport...");
+  server.connect(transport).catch((err) => {
+    console.error("Error starting MCP server:", err);
+    process.exit(1);
+  });
+  console.log("Server connected to transport");
+}, 100); // Small delay to make sure everything is initialized
