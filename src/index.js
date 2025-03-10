@@ -1,8 +1,8 @@
 import {
   McpServer,
   ResourceTemplate,
-} from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+} from "../node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js";
+import { StdioServerTransport } from "../node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js";
 import { z } from "zod";
 import fetch from "node-fetch";
 
@@ -52,7 +52,8 @@ server.resource(
       const data = await response.json();
 
       const orgList = data.orgs.map((org) =>
-        `ID: ${org.id} | Name: ${org.name} | Description: ${org.description || "N/A"
+        `ID: ${org.id} | Name: ${org.name} | Description: ${
+          org.description || "N/A"
         }`
       ).join("\n");
 
@@ -83,7 +84,8 @@ server.resource(
       const data = await response.json();
 
       const bucketList = data.buckets.map((bucket) =>
-        `ID: ${bucket.id} | Name: ${bucket.name} | Organization ID: ${bucket.orgID} | Retention Period: ${bucket.retentionRules?.[0]?.everySeconds || "∞"
+        `ID: ${bucket.id} | Name: ${bucket.name} | Organization ID: ${bucket.orgID} | Retention Period: ${
+          bucket.retentionRules?.[0]?.everySeconds || "∞"
         } seconds`
       ).join("\n");
 
@@ -226,8 +228,9 @@ server.tool(
   },
   async ({ org, bucket, data, precision }) => {
     try {
-      let endpoint = `/api/v2/write?org=${encodeURIComponent(org)}&bucket=${encodeURIComponent(bucket)
-        }`;
+      let endpoint = `/api/v2/write?org=${encodeURIComponent(org)}&bucket=${
+        encodeURIComponent(bucket)
+      }`;
       if (precision) {
         endpoint += `&precision=${precision}`;
       }
@@ -371,7 +374,8 @@ server.tool(
         content: [{
           type: "text",
           text:
-            `Organization created successfully:\nID: ${org.id}\nName: ${org.name}\nDescription: ${org.description || "N/A"
+            `Organization created successfully:\nID: ${org.id}\nName: ${org.name}\nDescription: ${
+              org.description || "N/A"
             }`,
         }],
       };
