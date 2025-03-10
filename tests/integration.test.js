@@ -633,7 +633,7 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
       console.log("Running list buckets test...");
       const resource = await withTimeout(
         mcpClient.readResource("influxdb://buckets"),
-        15000,
+        3000,
         "List buckets",
       );
       expect(resource.contents).toHaveLength(1);
@@ -653,7 +653,7 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
         mcpClient.readResource(
           `influxdb://bucket/${INFLUXDB_BUCKET}/measurements`,
         ),
-        15000,
+        3000,
         "List measurements",
       );
       expect(resource.contents).toHaveLength(1);
