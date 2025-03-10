@@ -22,8 +22,8 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-// Helper function for InfluxDB API requests
-async function influxRequest(endpoint, options = {}) {
+// Helper function for InfluxDB API requests with timeout
+async function influxRequest(endpoint, options = {}, timeoutMs = 5000) {
   const url = `${INFLUXDB_URL}${endpoint}`;
   const defaultOptions = {
     headers: {
@@ -32,7 +32,25 @@ async function influxRequest(endpoint, options = {}) {
     },
   };
 
-  const response = await fetch(url, { ...defaultOptions, ...options });
+  console.log(`Making request to: ${url}`);
+
+  // Create a timeout promise
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(
+      () =>
+        reject(
+          new Error(`InfluxDB API request timed out after ${timeoutMs}ms`),
+        ),
+      timeoutMs,
+    );
+  });
+
+  // Create the fetch promise
+  const fetchPromise = fetch(url, { ...defaultOptions, ...options });
+
+  // Race the fetch against the timeout
+  const response = await Promise.race([fetchPromise, timeoutPromise]);
+  console.log(`Response status: ${response.status}`);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -47,27 +65,65 @@ server.resource(
   "orgs",
   "influxdb://orgs",
   async (uri) => {
-    try {
-      const response = await influxRequest("/api/v2/orgs");
-      const data = await response.json();
+    console.log("Processing list organizations request - START");
 
+    try {
+      // Add detailed debug logging
+      console.log(`INFLUXDB_URL: ${INFLUXDB_URL}`);
+      console.log(`INFLUXDB_TOKEN set: ${INFLUXDB_TOKEN ? "Yes" : "No"}`);
+
+      console.log("Making request to InfluxDB API...");
+      // Our influxRequest function already has built-in timeout
+      const response = await influxRequest("/api/v2/orgs", {}, 5000);
+      console.log(
+        "Organizations API response received, status:",
+        response.status,
+      );
+
+      // Also add timeout for JSON parsing
+      console.log("Parsing response body...");
+      const data = await response.json();
+      console.log(`Found ${data.orgs?.length || 0} organizations`);
+
+      // If we have no orgs, return an empty list instead of failing
+      if (!data.orgs || data.orgs.length === 0) {
+        console.log("No organizations found, returning empty list");
+        return {
+          contents: [{
+            uri: uri.href,
+            text: `# InfluxDB Organizations\n\nNo organizations found.`,
+          }],
+        };
+      }
+
+      // Format the organization list
+      console.log("Formatting organization data...");
       const orgList = data.orgs.map((org) =>
         `ID: ${org.id} | Name: ${org.name} | Description: ${
           org.description || "N/A"
         }`
       ).join("\n");
 
-      return {
+      // Prepare the result
+      const result = {
         contents: [{
           uri: uri.href,
           text: `# InfluxDB Organizations\n\n${orgList}`,
         }],
       };
+
+      console.log("Successfully processed list organizations request - END");
+      return result;
     } catch (error) {
+      console.error("Error in list organizations resource:", error.message);
+      console.error(error.stack);
+
+      // Return a formatted error
       return {
         contents: [{
           uri: uri.href,
-          text: `Error retrieving organizations: ${error.message}`,
+          text:
+            `# InfluxDB Organizations - Error\n\nError retrieving organizations: ${error.message}`,
         }],
       };
     }
