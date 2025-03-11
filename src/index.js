@@ -1,8 +1,10 @@
+#!/usr/bin/env node
+
 import {
   McpServer,
   ResourceTemplate,
-} from "../node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js";
-import { StdioServerTransport } from "../node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js";
+} from "@modelcontextprotocol/sdk/dist/esm/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/dist/esm/server/stdio.js";
 import { z } from "zod";
 
 // Import config
@@ -34,7 +36,7 @@ validateEnvironment();
 // Create MCP server
 const server = new McpServer({
   name: "InfluxDB",
-  version: "1.0.0",
+  version: "0.1.0",
 });
 
 // Register resources

@@ -59,9 +59,28 @@ The server requires these environment variables:
 
 ## Installation
 
+### Option 1: Run with npx (recommended)
+
+```bash
+# Run directly with npx
+INFLUXDB_TOKEN=your_token npx influxdb-mcp-server
+```
+
+### Option 2: Install globally
+
+```bash
+# Install globally
+npm install -g influxdb-mcp-server
+
+# Run the server
+INFLUXDB_TOKEN=your_token influxdb-mcp-server
+```
+
+### Option 3: From source
+
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/influxdb-mcp-server.git
+git clone https://github.com/idoru/influxdb-mcp-server.git
 cd influxdb-mcp-server
 
 # Install dependencies
@@ -74,6 +93,26 @@ INFLUXDB_TOKEN=your_token npm start
 ## Integration with Claude for Desktop
 
 Add the server to your `claude_desktop_config.json`:
+
+### Using npx (recommended)
+
+```json
+{
+  \"mcpServers\": {
+    \"influxdb\": {
+      \"command\": \"npx\",
+      \"args\": [\"influxdb-mcp-server\"],
+      \"env\": {
+        \"INFLUXDB_TOKEN\": \"your_token\",
+        \"INFLUXDB_URL\": \"http://localhost:8086\",
+        \"INFLUXDB_ORG\": \"your_org\"
+      }
+    }
+  }
+}
+```
+
+### If installed locally
 
 ```json
 {

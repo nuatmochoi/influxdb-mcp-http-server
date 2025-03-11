@@ -1,16 +1,27 @@
 {
   "name": "influxdb-mcp-server",
-  "version": "1.0.0",
-  "main": "index.js",
+  "version": "0.1.0",
+  "main": "src/index.js",
   "type": "module",
+  "bin": {
+    "influxdb-mcp-server": "src/index.js"
+  },
   "scripts": {
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --detectOpenHandles --runInBand",
     "start": "node src/index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": ["influxdb", "mcp", "model context protocol", "claude", "anthropic", "timeseries"],
+  "author": "Sam Coward <idoru42@gmail.com> (https://github.com/idoru)",
+  "license": "MIT",
+  "description": "A Model Context Protocol (MCP) server for InfluxDB that enables Claude and other AI assistants to work with time-series data",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/idoru/influxdb-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/idoru/influxdb-mcp-server/issues"
+  },
+  "homepage": "https://github.com/idoru/influxdb-mcp-server#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.1",
     "node-fetch": "^3.3.2",
@@ -27,7 +38,7 @@
     "typescript": "^5.8.2",
     "wait-for-expect": "^3.0.2"
   },
-  "imports": {
-    "@modelcontextprotocol/sdk/*": "./node_modules/@modelcontextprotocol/sdk/dist/esm/*"
+  "engines": {
+    "node": ">=14.16.0"
   }
 }
