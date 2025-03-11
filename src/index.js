@@ -69,12 +69,11 @@ async function influxRequest(endpoint, options = {}, timeoutMs = 5000) {
       signal: controller.signal,
     };
 
-    console.log(`Request options: ${
-      JSON.stringify({
-        method: requestOptions.method,
-        headers: Object.keys(requestOptions.headers),
-      })
-    }`);
+    console.log(`Request options: ${JSON.stringify({
+      method: requestOptions.method,
+      headers: Object.keys(requestOptions.headers),
+    })
+      }`);
 
     // Make the request
     const response = await fetch(url, requestOptions);
@@ -141,7 +140,7 @@ server.resource(
 
       // Return the organizations data as stringified JSON in text field
       console.log("Returning organization data as JSON...");
-      
+
       // Prepare the result as JSON data in the text field
       const result = {
         contents: [{
@@ -160,8 +159,8 @@ server.resource(
       return {
         contents: [{
           uri: uri.href,
-          text: JSON.stringify({ 
-            error: `Error retrieving organizations: ${error.message}` 
+          text: JSON.stringify({
+            error: `Error retrieving organizations: ${error.message}`,
           }),
         }],
         error: true,
@@ -208,7 +207,7 @@ server.resource(
 
       // Return the buckets data as stringified JSON in text field
       console.log("Returning bucket data as JSON...");
-      
+
       // Prepare the result as JSON data in text field
       const result = {
         contents: [{
@@ -227,8 +226,8 @@ server.resource(
       return {
         contents: [{
           uri: uri.href,
-          text: JSON.stringify({ 
-            error: `Error retrieving buckets: ${error.message}` 
+          text: JSON.stringify({
+            error: `Error retrieving buckets: ${error.message}`,
           }),
         }],
         error: true,
@@ -254,7 +253,7 @@ server.resource(
         contents: [{
           uri: uri.href,
           text: JSON.stringify({
-            error: "INFLUXDB_ORG environment variable is not set"
+            error: "INFLUXDB_ORG environment variable is not set",
           }),
         }],
         error: true,
@@ -309,7 +308,7 @@ schema.measurements(bucket: "${bucketName}")`,
             uri: uri.href,
             text: JSON.stringify({
               bucket: bucketName,
-              measurements: []
+              measurements: [],
             }),
           }],
         };
@@ -325,14 +324,16 @@ schema.measurements(bucket: "${bucketName}")`,
       console.log("Successfully processed measurements request - END");
 
       // Create a proper JSON structure for measurements
-      const measurementsArray = measurements.split("\n").filter(m => m.trim() !== "");
-      
+      const measurementsArray = measurements.split("\n").filter((m) =>
+        m.trim() !== ""
+      );
+
       return {
         contents: [{
           uri: uri.href,
           text: JSON.stringify({
             bucket: bucketName,
-            measurements: measurementsArray
+            measurements: measurementsArray,
           }),
         }],
       };
@@ -344,7 +345,7 @@ schema.measurements(bucket: "${bucketName}")`,
         contents: [{
           uri: uri.href,
           text: JSON.stringify({
-            error: `Error retrieving measurements: ${error.message}`
+            error: `Error retrieving measurements: ${error.message}`,
           }),
         }],
         error: true,
@@ -368,9 +369,8 @@ server.resource(
       console.log(`Decoded query: ${decodedQuery.substring(0, 50)}...`);
 
       // Direct fetch approach
-      const queryUrl = `${INFLUXDB_URL}/api/v2/query?org=${
-        encodeURIComponent(orgName)
-      }`;
+      const queryUrl = `${INFLUXDB_URL}/api/v2/query?org=${encodeURIComponent(orgName)
+        }`;
       console.log(`Query URL: ${queryUrl}`);
 
       const response = await fetch(queryUrl, {
@@ -395,22 +395,24 @@ server.resource(
       console.log(`Query response length: ${responseText.length}`);
 
       console.log(`=== QUERY RESOURCE COMPLETED SUCCESSFULLY ===`);
-      
+
       // Parse CSV to JSON
-      const lines = responseText.split('\n').filter(line => line.trim() !== '');
+      const lines = responseText.split("\n").filter((line) =>
+        line.trim() !== ""
+      );
       let result;
-      
+
       if (lines.length > 1) {
-        const headers = lines[0].split(',');
-        const data = lines.slice(1).map(line => {
-          const values = line.split(',');
+        const headers = lines[0].split(",");
+        const data = lines.slice(1).map((line) => {
+          const values = line.split(",");
           const record = {};
           headers.forEach((header, index) => {
             record[header] = values[index];
           });
           return record;
         });
-        
+
         result = {
           contents: [{
             uri: uri.href,
@@ -418,7 +420,7 @@ server.resource(
               query: decodedQuery,
               organization: orgName,
               headers: headers,
-              data: data
+              data: data,
             }),
           }],
         };
@@ -430,12 +432,12 @@ server.resource(
             text: JSON.stringify({
               query: decodedQuery,
               organization: orgName,
-              data: []
+              data: [],
             }),
           }],
         };
       }
-      
+
       return result;
     } catch (error) {
       console.error(`=== QUERY RESOURCE ERROR: ${error.message} ===`);
@@ -443,7 +445,7 @@ server.resource(
         contents: [{
           uri: uri.href,
           text: JSON.stringify({
-            error: `Error executing query: ${error.message}`
+            error: `Error executing query: ${error.message}`,
           }),
         }],
         error: true,
@@ -472,9 +474,8 @@ server.tool(
 
     try {
       // Simplified approach focusing on core functionality
-      let endpoint = `/api/v2/write?org=${encodeURIComponent(org)}&bucket=${
-        encodeURIComponent(bucket)
-      }`;
+      let endpoint = `/api/v2/write?org=${encodeURIComponent(org)}&bucket=${encodeURIComponent(bucket)
+        }`;
       if (precision) {
         endpoint += `&precision=${precision}`;
       }
@@ -653,8 +654,7 @@ server.tool(
         content: [{
           type: "text",
           text:
-            `Organization created successfully:\nID: ${org.id}\nName: ${org.name}\nDescription: ${
-              org.description || "N/A"
+            `Organization created successfully:\nID: ${org.id}\nName: ${org.name}\nDescription: ${org.description || "N/A"
             }`,
         }],
       };

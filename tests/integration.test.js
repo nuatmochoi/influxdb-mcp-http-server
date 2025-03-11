@@ -141,8 +141,8 @@ describe("InfluxDB MCP Server Integration Tests", () => {
 
             const cleanupPromise = (async () => {
               try {
-                await containerToRemove.stop().catch(() => {});
-                await containerToRemove.remove().catch(() => {});
+                await containerToRemove.stop().catch(() => { });
+                await containerToRemove.remove().catch(() => { });
                 console.log(
                   `Successfully removed container ${containerInfo.Id}`,
                 );
@@ -355,7 +355,7 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
       // Close any existing client first
       if (mcpClient) {
         try {
-          await mcpClient.close().catch(() => {});
+          await mcpClient.close().catch(() => { });
           console.log("Closed existing MCP client");
           mcpClient = null;
         } catch (e) {
@@ -407,11 +407,38 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
 
       // Connect first to start the server process
       console.log("Connecting to MCP server (this will start the process)...");
-      await mcpClient.connect(transport);
 
-      // Add a short delay to ensure the server is fully initialized
+      // Add detailed debug logging for the connection process
+      try {
+        await mcpClient.connect(transport);
+        console.log("MCP client connect() succeeded");
+      } catch (connError) {
+        console.error("MCP client connect() failed:", connError.message);
+
+        // Try to get stderr output to help diagnose the issue
+        if (transport._process && transport._process.stderr) {
+          const stderrChunks = [];
+          transport._process.stderr.on("data", (chunk) => {
+            stderrChunks.push(chunk);
+          });
+
+          // Give some time to collect stderr output
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          if (stderrChunks.length > 0) {
+            console.error(
+              "Server stderr output:",
+              Buffer.concat(stderrChunks).toString(),
+            );
+          }
+        }
+
+        throw connError;
+      }
+
+      // Add a longer delay to ensure the server is fully initialized
       console.log("Waiting for server process to initialize...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Get a reference to the spawned process from the transport
       mcpServerProcess = transport._process;
@@ -445,6 +472,12 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
 
       // Verify the client is connected
       if (!mcpClient.isConnected) {
+        console.error("MCP client is not connected. Adding debug information:");
+        console.error("Server process exists:", mcpServerProcess !== null);
+        if (mcpServerProcess) {
+          console.error("Server process pid:", mcpServerProcess.pid);
+          console.error("Server process killed:", mcpServerProcess.killed);
+        }
         throw new Error("MCP client connection failed");
       }
 
@@ -466,8 +499,7 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
 
       // Verify data was written by checking via a direct API call
       const verifyResponse = await fetch(
-        `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${
-          encodeURIComponent(INFLUXDB_ORG)
+        `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${encodeURIComponent(INFLUXDB_ORG)
         }`,
         {
           method: "POST",
@@ -542,8 +574,7 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
         }
 
         console.log(
-          `${operationName}: attempt ${attempt + 1}/${
-            retries + 1
+          `${operationName}: attempt ${attempt + 1}/${retries + 1
           } (timeout: ${timeoutMs}ms)`,
         );
 
@@ -567,8 +598,7 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
       } catch (error) {
         lastError = error;
         console.log(
-          `${operationName} attempt ${attempt + 1}/${
-            retries + 1
+          `${operationName} attempt ${attempt + 1}/${retries + 1
           } failed: ${error.message}`,
         );
         if (attempt < retries) {
@@ -580,11 +610,11 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
 
     // If we get here, all retries failed
     throw lastError ||
-      new Error(`${operationName} failed after ${retries + 1} attempts`);
+    new Error(`${operationName} failed after ${retries + 1} attempts`);
   }
 
   // Test: List organizations using direct InfluxDB API
-  test("should list organizations", async () => {
+  test("should list organizations - direct API", async () => {
     console.log("Testing organization listing via direct API...");
 
     try {
@@ -613,6 +643,12 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
       expect(data.orgs.length).toBeGreaterThan(0);
       expect(data.orgs[0].name).toBe(INFLUXDB_ORG);
 
+      // Save the orgs for comparison
+      console.log(
+        `Found orgs via direct API: ${data.orgs.map((org) => org.name).join(", ")
+        }`,
+      );
+
       console.log("Organization listing test completed successfully");
     } catch (error) {
       console.error("Organization test failed:", error.message);
@@ -620,8 +656,63 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
     }
   });
 
+  // Test: List organizations using MCP client
+  test("should list organizations - MCP client", async () => {
+    console.log("Testing organization listing via MCP client...");
+
+    try {
+      // Initialize MCP client and server
+      await startMcpServer();
+      const client = await initializeMcpClient();
+
+      // Use the client to list organizations
+      console.log("Requesting organizations from MCP server...");
+      const resourceUri = "influxdb://orgs";
+
+      // Use withTimeout to handle potential timeouts
+      const response = await withTimeout(
+        client.resource.get(resourceUri),
+        5000,
+        "List organizations via MCP",
+      );
+
+      console.log("MCP server response received for organizations");
+
+      // The response should have contents[0].text as a JSON string
+      expect(response).toBeDefined();
+      expect(response.contents).toBeDefined();
+      expect(response.contents[0]).toBeDefined();
+      expect(response.contents[0].text).toBeDefined();
+
+      // Parse the JSON string
+      const orgsData = JSON.parse(response.contents[0].text);
+      console.log(
+        `Found orgs via MCP client: ${orgsData.orgs.map((org) => org.name).join(", ")
+        }`,
+      );
+
+      // Validate response
+      expect(orgsData).toBeDefined();
+      expect(orgsData.orgs).toBeDefined();
+      expect(Array.isArray(orgsData.orgs)).toBe(true);
+
+      // Compare with the test org
+      const containsTestOrg = orgsData.orgs.some((org) =>
+        org.name === INFLUXDB_ORG
+      );
+      expect(containsTestOrg).toBe(true);
+
+      console.log(
+        "MCP client organization listing test completed successfully",
+      );
+    } catch (error) {
+      console.error("MCP client organization test failed:", error.message);
+      throw error;
+    }
+  });
+
   // Test: List buckets using direct API
-  test("should list buckets", async () => {
+  test("should list buckets - direct API", async () => {
     console.log("Testing bucket listing via direct API...");
 
     try {
@@ -655,9 +746,70 @@ temperature,location=datacenter,sensor=rack2 value=25.1 ${Date.now() * 1000000}
       );
       expect(foundBucket).toBe(true);
 
+      // Log the buckets and their org IDs
+      console.log("Buckets found via direct API:");
+      data.buckets.forEach((bucket) => {
+        console.log(`- Name: ${bucket.name}, OrgID: ${bucket.orgID}`);
+      });
+
       console.log("Bucket listing test completed successfully");
     } catch (error) {
       console.error("Bucket test failed:", error.message);
+      throw error;
+    }
+  });
+
+  // Test: List buckets using MCP client
+  test("should list buckets - MCP client", async () => {
+    console.log("Testing bucket listing via MCP client...");
+
+    try {
+      // Initialize MCP client and server
+      await startMcpServer();
+      const client = await initializeMcpClient();
+
+      // Use the client to list buckets
+      console.log("Requesting buckets from MCP server...");
+      const resourceUri = "influxdb://buckets";
+
+      // Use withTimeout to handle potential timeouts
+      const response = await withTimeout(
+        client.resource.get(resourceUri),
+        5000,
+        "List buckets via MCP",
+      );
+
+      console.log("MCP server response received for buckets");
+
+      // The response should have contents[0].text as a JSON string
+      expect(response).toBeDefined();
+      expect(response.contents).toBeDefined();
+      expect(response.contents[0]).toBeDefined();
+      expect(response.contents[0].text).toBeDefined();
+
+      // Parse the JSON string
+      const bucketsData = JSON.parse(response.contents[0].text);
+
+      // Validate response
+      expect(bucketsData).toBeDefined();
+      expect(bucketsData.buckets).toBeDefined();
+      expect(Array.isArray(bucketsData.buckets)).toBe(true);
+
+      // Log the buckets and their org IDs
+      console.log("Buckets found via MCP client:");
+      bucketsData.buckets.forEach((bucket) => {
+        console.log(`- Name: ${bucket.name}, OrgID: ${bucket.orgID}`);
+      });
+
+      // Check if our test bucket is in the list
+      const foundBucket = bucketsData.buckets.some((bucket) =>
+        bucket.name === INFLUXDB_BUCKET
+      );
+      expect(foundBucket).toBe(true);
+
+      console.log("MCP client bucket listing test completed successfully");
+    } catch (error) {
+      console.error("MCP client bucket test failed:", error.message);
       throw error;
     }
   });
@@ -676,9 +828,8 @@ schema.measurements(bucket: "${INFLUXDB_BUCKET}")`,
       });
 
       // Query measurements via direct API
-      const queryUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${
-        encodeURIComponent(INFLUXDB_ORG)
-      }`;
+      const queryUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${encodeURIComponent(INFLUXDB_ORG)
+        }`;
       console.log(`Making query request to: ${queryUrl}`);
 
       const response = await fetch(queryUrl, {
@@ -715,8 +866,7 @@ schema.measurements(bucket: "${INFLUXDB_BUCKET}")`,
 
     // Create test data
     const lineProtocol =
-      `network_traffic,host=gateway01 bytes_in=1024,bytes_out=2048 ${
-        Date.now() * 1000000
+      `network_traffic,host=gateway01 bytes_in=1024,bytes_out=2048 ${Date.now() * 1000000
       }`;
 
     try {
@@ -739,9 +889,8 @@ schema.measurements(bucket: "${INFLUXDB_BUCKET}")`,
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Now we'll use the InfluxDB API directly to write data
-      const writeUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/write?org=${
-        encodeURIComponent(INFLUXDB_ORG)
-      }&bucket=${INFLUXDB_BUCKET}&precision=ns`;
+      const writeUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/write?org=${encodeURIComponent(INFLUXDB_ORG)
+        }&bucket=${INFLUXDB_BUCKET}&precision=ns`;
 
       console.log(`Writing data directly to: ${writeUrl}`);
 
@@ -759,9 +908,8 @@ schema.measurements(bucket: "${INFLUXDB_BUCKET}")`,
       console.log(`Write response status: ${writeResponse.status}`);
 
       // Verify the data was written using a flux query
-      const queryUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${
-        encodeURIComponent(INFLUXDB_ORG)
-      }`;
+      const queryUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${encodeURIComponent(INFLUXDB_ORG)
+        }`;
 
       const verifyResponse = await fetch(queryUrl, {
         method: "POST",
@@ -809,9 +957,8 @@ schema.measurements(bucket: "${INFLUXDB_BUCKET}")`,
         |> filter(fn: (r) => r._measurement == "cpu_usage")
         |> limit(n: 10)`;
 
-      const queryUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${
-        encodeURIComponent(INFLUXDB_ORG)
-      }`;
+      const queryUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${encodeURIComponent(INFLUXDB_ORG)
+        }`;
 
       console.log(`Sending Flux query to: ${queryUrl}`);
 
@@ -850,9 +997,8 @@ schema.measurements(bucket: "${INFLUXDB_BUCKET}")`,
 
     try {
       // First, get the org ID
-      const orgsUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/orgs?org=${
-        encodeURIComponent(INFLUXDB_ORG)
-      }`;
+      const orgsUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/orgs?org=${encodeURIComponent(INFLUXDB_ORG)
+        }`;
       console.log(`Getting organization info from: ${orgsUrl}`);
 
       const orgsResponse = await fetch(orgsUrl, {
@@ -939,9 +1085,8 @@ schema.measurements(bucket: "${INFLUXDB_BUCKET}")`,
         |> limit(n: 10)`;
 
       // Execute the query directly via InfluxDB API
-      const queryUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${
-        encodeURIComponent(INFLUXDB_ORG)
-      }`;
+      const queryUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/query?org=${encodeURIComponent(INFLUXDB_ORG)
+        }`;
 
       console.log(`Querying InfluxDB directly at: ${queryUrl}`);
 
@@ -1046,6 +1191,111 @@ schema.measurements(bucket: "${INFLUXDB_BUCKET}")`,
       console.log("Flux query examples prompt test completed successfully");
     } catch (error) {
       console.error("Flux query examples prompt test failed:", error.message);
+      throw error;
+    }
+  });
+
+  // Test: Compare org IDs between buckets and organizations to find discrepancies
+  test("should have consistent org IDs between buckets and orgs", async () => {
+    console.log("Testing consistency between buckets and orgs...");
+
+    try {
+      // Get orgs via direct API
+      const orgsUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/orgs`;
+      const orgsResponse = await fetch(orgsUrl, {
+        method: "GET",
+        headers: {
+          "Authorization": `Token ${INFLUXDB_ADMIN_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      expect(orgsResponse.status).toBe(200);
+      const orgsData = await orgsResponse.json();
+
+      // Get buckets via direct API
+      const bucketsUrl = `http://localhost:${INFLUXDB_PORT}/api/v2/buckets`;
+      const bucketsResponse = await fetch(bucketsUrl, {
+        method: "GET",
+        headers: {
+          "Authorization": `Token ${INFLUXDB_ADMIN_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      expect(bucketsResponse.status).toBe(200);
+      const bucketsData = await bucketsResponse.json();
+
+      // Extract all unique org IDs from buckets
+      const bucketOrgIds = [
+        ...new Set(bucketsData.buckets.map((bucket) => bucket.orgID)),
+      ];
+      console.log("Unique org IDs found in buckets:", bucketOrgIds);
+
+      // Extract all org IDs from orgs
+      const orgIds = orgsData.orgs.map((org) => org.id);
+      console.log("Org IDs found in organizations:", orgIds);
+
+      // Check if all bucket org IDs exist in the orgs list
+      const missingOrgIds = bucketOrgIds.filter((orgId) =>
+        !orgIds.includes(orgId)
+      );
+
+      if (missingOrgIds.length > 0) {
+        console.log(
+          "Found org IDs in buckets that don't exist in orgs list:",
+          missingOrgIds,
+        );
+
+        // For each missing org ID, log the buckets that use it
+        missingOrgIds.forEach((orgId) => {
+          const bucketsWithMissingOrg = bucketsData.buckets.filter((bucket) =>
+            bucket.orgID === orgId
+          );
+          console.log(
+            `Buckets with missing org ID ${orgId}:`,
+            bucketsWithMissingOrg.map((b) => `${b.name} (ID: ${b.id})`),
+          );
+        });
+      } else {
+        console.log(
+          "All bucket org IDs exist in the orgs list - no discrepancies",
+        );
+      }
+
+      // Now let's try to find these organizations with the MCP client
+      await startMcpServer();
+      const client = await initializeMcpClient();
+
+      // List orgs via MCP
+      console.log("Requesting organizations from MCP server...");
+      const orgsResponse2 = await withTimeout(
+        client.resource.get("influxdb://orgs"),
+        5000,
+        "List organizations via MCP for comparison",
+      );
+
+      const mcpOrgsData = JSON.parse(orgsResponse2.contents[0].text);
+      const mcpOrgIds = mcpOrgsData.orgs.map((org) => org.id);
+      console.log("Org IDs found via MCP client:", mcpOrgIds);
+
+      // Compare direct API and MCP results
+      const orgIdsDiff = orgIds.filter((id) => !mcpOrgIds.includes(id)).concat(
+        mcpOrgIds.filter((id) => !orgIds.includes(id)),
+      );
+
+      if (orgIdsDiff.length > 0) {
+        console.log(
+          "Difference between direct API and MCP org IDs:",
+          orgIdsDiff,
+        );
+      } else {
+        console.log("Direct API and MCP client return the same org IDs");
+      }
+    } catch (error) {
+      console.error("Consistency test failed:", error.message);
       throw error;
     }
   });
