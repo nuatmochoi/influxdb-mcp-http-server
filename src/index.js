@@ -115,30 +115,25 @@ server.resource(
       const data = await response.json();
       console.log(`Found ${data.orgs?.length || 0} organizations`);
 
-      // If we have no orgs, return an empty list instead of failing
+      // If we have no orgs, return an empty array in JSON format
       if (!data.orgs || data.orgs.length === 0) {
-        console.log("No organizations found, returning empty list");
+        console.log("No organizations found, returning empty list as JSON");
         return {
           contents: [{
             uri: uri.href,
-            text: `# InfluxDB Organizations\n\nNo organizations found.`,
+            json: { orgs: [] },
           }],
         };
       }
 
-      // Format the organization list
-      console.log("Formatting organization data...");
-      const orgList = data.orgs.map((org) =>
-        `ID: ${org.id} | Name: ${org.name} | Description: ${
-          org.description || "N/A"
-        }`
-      ).join("\n");
-
-      // Prepare the result
+      // Return the organizations data as proper JSON
+      console.log("Returning organization data as JSON...");
+      
+      // Prepare the result as JSON data
       const result = {
         contents: [{
           uri: uri.href,
-          text: `# InfluxDB Organizations\n\n${orgList}`,
+          json: data,
         }],
       };
 
@@ -148,13 +143,15 @@ server.resource(
       console.error("Error in list organizations resource:", error.message);
       console.error(error.stack);
 
-      // Return a formatted error
+      // Return error as JSON
       return {
         contents: [{
           uri: uri.href,
-          text:
-            `# InfluxDB Organizations - Error\n\nError retrieving organizations: ${error.message}`,
+          json: { 
+            error: `Error retrieving organizations: ${error.message}` 
+          },
         }],
+        error: true,
       };
     }
   },
