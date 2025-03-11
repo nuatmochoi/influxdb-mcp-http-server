@@ -6,6 +6,19 @@ import { StdioServerTransport } from "../node_modules/@modelcontextprotocol/sdk/
 import { z } from "zod";
 import fetch from "node-fetch";
 
+// Redirect console.log and console.error to stderr to avoid interfering with MCP protocol messages
+// MCP uses stdout for protocol communication
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
+console.log = function() {
+  process.stderr.write("[INFO] " + Array.from(arguments).join(" ") + "\n");
+};
+
+console.error = function() {
+  process.stderr.write("[ERROR] " + Array.from(arguments).join(" ") + "\n");
+};
+
 // Configuration from environment variables
 const INFLUXDB_URL = process.env.INFLUXDB_URL || "http://localhost:8086";
 const INFLUXDB_TOKEN = process.env.INFLUXDB_TOKEN;
@@ -115,25 +128,25 @@ server.resource(
       const data = await response.json();
       console.log(`Found ${data.orgs?.length || 0} organizations`);
 
-      // If we have no orgs, return an empty array in JSON format
+      // If we have no orgs, return an empty array as stringified JSON in text field
       if (!data.orgs || data.orgs.length === 0) {
         console.log("No organizations found, returning empty list as JSON");
         return {
           contents: [{
             uri: uri.href,
-            json: { orgs: [] },
+            text: JSON.stringify({ orgs: [] }),
           }],
         };
       }
 
-      // Return the organizations data as proper JSON
+      // Return the organizations data as stringified JSON in text field
       console.log("Returning organization data as JSON...");
       
-      // Prepare the result as JSON data
+      // Prepare the result as JSON data in the text field
       const result = {
         contents: [{
           uri: uri.href,
-          json: data,
+          text: JSON.stringify(data),
         }],
       };
 
@@ -143,13 +156,13 @@ server.resource(
       console.error("Error in list organizations resource:", error.message);
       console.error(error.stack);
 
-      // Return error as JSON
+      // Return error as stringified JSON in text field
       return {
         contents: [{
           uri: uri.href,
-          json: { 
+          text: JSON.stringify({ 
             error: `Error retrieving organizations: ${error.message}` 
-          },
+          }),
         }],
         error: true,
       };
@@ -182,30 +195,25 @@ server.resource(
       const data = await response.json();
       console.log(`Found ${data.buckets?.length || 0} buckets`);
 
-      // If we have no buckets, return an empty list instead of failing
+      // If we have no buckets, return an empty array as stringified JSON in text field
       if (!data.buckets || data.buckets.length === 0) {
-        console.log("No buckets found, returning empty list");
+        console.log("No buckets found, returning empty list as JSON");
         return {
           contents: [{
             uri: uri.href,
-            text: `# InfluxDB Buckets\n\nNo buckets found.`,
+            text: JSON.stringify({ buckets: [] }),
           }],
         };
       }
 
-      // Format the bucket list
-      console.log("Formatting bucket data...");
-      const bucketList = data.buckets.map((bucket) =>
-        `ID: ${bucket.id} | Name: ${bucket.name} | Organization ID: ${bucket.orgID} | Retention Period: ${
-          bucket.retentionRules?.[0]?.everySeconds || "∞"
-        } seconds`
-      ).join("\n");
-
-      // Prepare the result
+      // Return the buckets data as stringified JSON in text field
+      console.log("Returning bucket data as JSON...");
+      
+      // Prepare the result as JSON data in text field
       const result = {
         contents: [{
           uri: uri.href,
-          text: `# InfluxDB Buckets\n\n${bucketList}`,
+          text: JSON.stringify(data),
         }],
       };
 
@@ -215,13 +223,15 @@ server.resource(
       console.error("Error in list buckets resource:", error.message);
       console.error(error.stack);
 
-      // Return a formatted error
+      // Return error as stringified JSON in text field
       return {
         contents: [{
           uri: uri.href,
-          text:
-            `# InfluxDB Buckets - Error\n\nError retrieving buckets: ${error.message}`,
+          text: JSON.stringify({ 
+            error: `Error retrieving buckets: ${error.message}` 
+          }),
         }],
+        error: true,
       };
     }
   },
@@ -243,8 +253,11 @@ server.resource(
       return {
         contents: [{
           uri: uri.href,
-          text: "Error: INFLUXDB_ORG environment variable is not set",
+          text: JSON.stringify({
+            error: "INFLUXDB_ORG environment variable is not set"
+          }),
         }],
+        error: true,
       };
     }
 
@@ -294,7 +307,10 @@ schema.measurements(bucket: "${bucketName}")`,
         return {
           contents: [{
             uri: uri.href,
-            text: `No measurements found in bucket: ${bucketName}`,
+            text: JSON.stringify({
+              bucket: bucketName,
+              measurements: []
+            }),
           }],
         };
       }
@@ -308,10 +324,16 @@ schema.measurements(bucket: "${bucketName}")`,
       console.log(`Found ${measurements.split("\n").length} measurements`);
       console.log("Successfully processed measurements request - END");
 
+      // Create a proper JSON structure for measurements
+      const measurementsArray = measurements.split("\n").filter(m => m.trim() !== "");
+      
       return {
         contents: [{
           uri: uri.href,
-          text: `# Measurements in Bucket: ${bucketName}\n\n${measurements}`,
+          text: JSON.stringify({
+            bucket: bucketName,
+            measurements: measurementsArray
+          }),
         }],
       };
     } catch (error) {
@@ -321,8 +343,11 @@ schema.measurements(bucket: "${bucketName}")`,
       return {
         contents: [{
           uri: uri.href,
-          text: `Error retrieving measurements: ${error.message}`,
+          text: JSON.stringify({
+            error: `Error retrieving measurements: ${error.message}`
+          }),
         }],
+        error: true,
       };
     }
   },
@@ -370,19 +395,58 @@ server.resource(
       console.log(`Query response length: ${responseText.length}`);
 
       console.log(`=== QUERY RESOURCE COMPLETED SUCCESSFULLY ===`);
-      return {
-        contents: [{
-          uri: uri.href,
-          text: responseText,
-        }],
-      };
+      
+      // Parse CSV to JSON
+      const lines = responseText.split('\n').filter(line => line.trim() !== '');
+      let result;
+      
+      if (lines.length > 1) {
+        const headers = lines[0].split(',');
+        const data = lines.slice(1).map(line => {
+          const values = line.split(',');
+          const record = {};
+          headers.forEach((header, index) => {
+            record[header] = values[index];
+          });
+          return record;
+        });
+        
+        result = {
+          contents: [{
+            uri: uri.href,
+            text: JSON.stringify({
+              query: decodedQuery,
+              organization: orgName,
+              headers: headers,
+              data: data
+            }),
+          }],
+        };
+      } else {
+        // No results or headers only
+        result = {
+          contents: [{
+            uri: uri.href,
+            text: JSON.stringify({
+              query: decodedQuery,
+              organization: orgName,
+              data: []
+            }),
+          }],
+        };
+      }
+      
+      return result;
     } catch (error) {
       console.error(`=== QUERY RESOURCE ERROR: ${error.message} ===`);
       return {
         contents: [{
           uri: uri.href,
-          text: `Error executing query: ${error.message}`,
+          text: JSON.stringify({
+            error: `Error executing query: ${error.message}`
+          }),
         }],
+        error: true,
       };
     }
   },
@@ -762,4 +826,3 @@ server.connect(transport).catch((err) => {
   console.error("Error starting MCP server:", err);
   process.exit(1);
 });
-console.log("Server connected to transport");
