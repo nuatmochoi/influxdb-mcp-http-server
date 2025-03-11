@@ -91,13 +91,39 @@ Add the server to your `claude_desktop_config.json`:
 }
 ```
 
+## Code Structure
+
+The server code is organized into a modular structure:
+
+- `src/`
+  - `index.js` - Main server entry point
+  - `config/` - Configuration related files
+    - `env.js` - Environment variable handling
+  - `utils/` - Utility functions
+    - `influxClient.js` - InfluxDB API client
+    - `loggerConfig.js` - Console logger configuration
+  - `handlers/` - Resource and tool handlers
+    - `organizationsHandler.js` - Organizations listing
+    - `bucketsHandler.js` - Buckets listing
+    - `measurementsHandler.js` - Measurements listing
+    - `queryHandler.js` - Query execution
+    - `writeDataTool.js` - Data write tool
+    - `queryDataTool.js` - Query tool
+    - `createBucketTool.js` - Bucket creation tool
+    - `createOrgTool.js` - Organization creation tool
+  - `prompts/` - Prompt templates
+    - `fluxQueryExamplesPrompt.js` - Flux query examples
+    - `lineProtocolGuidePrompt.js` - Line protocol guide
+
+This structure allows for better maintainability, easier testing, and clearer separation of concerns.
+
 ## Testing
 
 The repository includes comprehensive integration tests that:
 
-1. Spin up a Docker container with InfluxDB
-2. Populate it with sample data
-3. Test all MCP server functionality
+- Spin up a Docker container with InfluxDB
+- Populate it with sample data
+- Test all MCP server functionality
 
 To run the tests:
 

@@ -76,9 +76,23 @@ npm test -- -t "should list organizations"
 npm test -- --testPathIgnorePatterns=integration.test.js
 ```
 
-## Direct Testing Approach
+## Testing Approaches
 
-The integration tests use a direct API testing approach that focuses on verifying the core functionality without depending on the MCP client. This approach has several advantages:
+The project now uses multiple testing approaches to ensure functionality and stability:
+
+1. **Integration Tests** (`tests/integration.test.js`):
+   - End-to-end tests that use Docker to run a real InfluxDB instance
+   - Tests both direct API calls and MCP client interactions
+   - Contains robust cleanup to prevent hanging processes
+
+2. **Direct Handler Tests** (`direct-tests/handlers.test.js`):
+   - Tests each handler function directly without MCP protocol overhead
+   - Validates that the individual handlers work correctly with InfluxDB
+   - Uses environment variable mocking to ensure proper test isolation
+
+### Direct Testing Advantages
+
+The direct API testing approach focuses on verifying the core functionality without depending on the MCP client. This approach has several advantages:
 
 1. **Isolates Test Concerns**: Separates InfluxDB connectivity testing from MCP client/server communication issues
 2. **More Reliable Tests**: Reduces dependency on the MCP client, which can have its own reliability challenges
@@ -98,29 +112,34 @@ For testing server functionality directly, we use:
 - Previous issues with list operations timing out have been resolved
 - The integration tests now correctly validate both direct API access and MCP server functionality
 
-### Lessons Learned from Fixed Timeout Issues
+### Lessons Learned from Testing Issues
 
-The timeout issues with list operations (buckets, organizations, measurements) were caused by several factors:
+During development, we encountered several challenges with testing the MCP server:
 
-#### 1. Authentication Token Mismatch
+#### 1. MCP Protocol Compatibility Issues
+
+- **Problem**: The MCP client and server had compatibility issues with method names and protocol implementation.
+- **Solution**: Created direct handler tests that bypass the MCP protocol to validate core functionality independently of protocol issues.
+
+#### 2. Authentication Token Mismatch
 
 - **Problem**: The MCP server was using the regular token (INFLUXDB_TOKEN) instead of the admin token (INFLUXDB_ADMIN_TOKEN) when making API calls, resulting in 401 unauthorized errors.
 - **Solution**: Updated the tests to use the admin token for all operations, ensuring proper authorization.
 
-#### 2. Multiple Server Process Conflicts
+#### 3. Multiple Server Process Conflicts
 
 - **Problem**: The test suite was creating two instances of the server process - one explicitly and another through the StdioClientTransport, causing conflicts and connection issues.
 - **Solution**: Restructured the tests to either use direct API calls or properly manage a single server process instance.
 
-#### 3. Inadequate Request Timeout Handling
+#### 4. Environment Variable Persistence
+
+- **Problem**: Environment variables set during runtime were not affecting already-imported modules that had cached the values.
+- **Solution**: Implemented Jest module mocking to override environment configuration during testing.
+
+#### 5. Inadequate Request Timeout Handling
 
 - **Problem**: The promise race used for timeouts wasn't properly canceling fetch operations when timeouts occurred, leading to dangling network requests.
 - **Solution**: Implemented AbortController for proper request cancellation in the influxRequest function.
-
-#### 4. Test Structure Issues
-
-- **Problem**: Tests were relying on complex MCP client/server communication which added multiple failure points.
-- **Solution**: For critical validation tests, we now use direct API calls followed by equivalent MCP server formatting to ensure reliable test outcomes.
 
 ### Common Issues and Solutions
 
