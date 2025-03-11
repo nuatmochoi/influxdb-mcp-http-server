@@ -41,12 +41,27 @@ async function influxRequest(endpoint, options = {}, timeoutMs = 5000) {
       controller.abort(`InfluxDB API request timed out after ${timeoutMs}ms`);
     }, timeoutMs);
 
+    // Properly merge headers to avoid conflicts
+    // This ensures custom headers (like Content-Type) aren't overridden
+    const mergedHeaders = {
+      ...defaultOptions.headers,
+      ...options.headers || {},
+    };
+
     // Add the abort signal to the request options
     const requestOptions = {
       ...defaultOptions,
       ...options,
+      headers: mergedHeaders,
       signal: controller.signal,
     };
+
+    console.log(`Request options: ${
+      JSON.stringify({
+        method: requestOptions.method,
+        headers: Object.keys(requestOptions.headers),
+      })
+    }`);
 
     // Make the request
     const response = await fetch(url, requestOptions);
@@ -57,7 +72,12 @@ async function influxRequest(endpoint, options = {}, timeoutMs = 5000) {
     console.log(`Response status: ${response.status}`);
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await Promise.race([
+        response.text(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Response text timeout")), 3000)
+        ),
+      ]);
       throw new Error(`InfluxDB API Error (${response.status}): ${errorText}`);
     }
 
@@ -318,18 +338,41 @@ server.resource(
     list: undefined,
   }),
   async (uri, { orgName, fluxQuery }) => {
+    console.log(`=== QUERY RESOURCE CALLED ===`);
+    console.log(`Query for org: ${orgName}, query length: ${fluxQuery.length}`);
+
     try {
       const decodedQuery = decodeURIComponent(fluxQuery);
-      const response = await influxRequest(
-        `/api/v2/query?org=${encodeURIComponent(orgName)}`,
-        {
-          method: "POST",
-          body: JSON.stringify({ query: decodedQuery, type: "flux" }),
+      console.log(`Decoded query: ${decodedQuery.substring(0, 50)}...`);
+
+      // Direct fetch approach
+      const queryUrl = `${INFLUXDB_URL}/api/v2/query?org=${
+        encodeURIComponent(orgName)
+      }`;
+      console.log(`Query URL: ${queryUrl}`);
+
+      const response = await fetch(queryUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Token ${INFLUXDB_TOKEN}`,
         },
-      );
+        body: JSON.stringify({ query: decodedQuery, type: "flux" }),
+      });
+
+      console.log(`Query response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to execute query: ${response.status} ${errorText}`,
+        );
+      }
 
       const responseText = await response.text();
+      console.log(`Query response length: ${responseText.length}`);
 
+      console.log(`=== QUERY RESOURCE COMPLETED SUCCESSFULLY ===`);
       return {
         contents: [{
           uri: uri.href,
@@ -337,6 +380,7 @@ server.resource(
         }],
       };
     } catch (error) {
+      console.error(`=== QUERY RESOURCE ERROR: ${error.message} ===`);
       return {
         contents: [{
           uri: uri.href,
@@ -359,7 +403,14 @@ server.tool(
     ),
   },
   async ({ org, bucket, data, precision }) => {
+    // Add extremely clear logging
+    console.log(`=== WRITE-DATA TOOL CALLED ===`);
+    console.log(
+      `Writing to org: ${org}, bucket: ${bucket}, data length: ${data.length}`,
+    );
+
     try {
+      // Simplified approach focusing on core functionality
       let endpoint = `/api/v2/write?org=${encodeURIComponent(org)}&bucket=${
         encodeURIComponent(bucket)
       }`;
@@ -367,15 +418,28 @@ server.tool(
         endpoint += `&precision=${precision}`;
       }
 
-      const response = await influxRequest(endpoint, {
+      console.log(`Write URL: ${INFLUXDB_URL}${endpoint}`);
+
+      // Use fetch directly instead of our wrapper to eliminate any potential issues
+      const response = await fetch(`${INFLUXDB_URL}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
-          Authorization: `Token ${INFLUXDB_TOKEN}`,
+          "Authorization": `Token ${INFLUXDB_TOKEN}`,
         },
         body: data,
       });
 
+      console.log(`Write response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to write data: ${response.status} ${errorText}`,
+        );
+      }
+
+      console.log(`=== WRITE-DATA TOOL COMPLETED SUCCESSFULLY ===`);
       return {
         content: [{
           type: "text",
@@ -383,6 +447,7 @@ server.tool(
         }],
       };
     } catch (error) {
+      console.error(`=== WRITE-DATA TOOL ERROR: ${error.message} ===`);
       return {
         content: [{
           type: "text",
@@ -442,6 +507,9 @@ server.tool(
     ),
   },
   async ({ name, orgID, retentionPeriodSeconds }) => {
+    console.log(`=== CREATE-BUCKET TOOL CALLED ===`);
+    console.log(`Creating bucket: ${name}, orgID: ${orgID}`);
+
     try {
       const bucketData = {
         name,
@@ -453,21 +521,39 @@ server.tool(
           : undefined,
       };
 
-      const response = await influxRequest("/api/v2/buckets", {
+      console.log(`Creating bucket with data: ${JSON.stringify(bucketData)}`);
+
+      // Use fetch directly instead of our wrapper
+      const response = await fetch(`${INFLUXDB_URL}/api/v2/buckets`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Token ${INFLUXDB_TOKEN}`,
+        },
         body: JSON.stringify(bucketData),
       });
 
-      const bucket = await response.json();
+      console.log(`Create bucket response status: ${response.status}`);
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to create bucket: ${response.status} ${errorText}`,
+        );
+      }
+
+      const bucketResponse = await response.json();
+
+      console.log(`=== CREATE-BUCKET TOOL COMPLETED SUCCESSFULLY ===`);
       return {
         content: [{
           type: "text",
           text:
-            `Bucket created successfully:\nID: ${bucket.id}\nName: ${bucket.name}\nOrganization ID: ${bucket.orgID}`,
+            `Bucket created successfully:\nID: ${bucketResponse.id}\nName: ${bucketResponse.name}\nOrganization ID: ${bucketResponse.orgID}`,
         }],
       };
     } catch (error) {
+      console.error(`=== CREATE-BUCKET TOOL ERROR: ${error.message} ===`);
       return {
         content: [{
           type: "text",
@@ -527,12 +613,16 @@ server.tool(
 server.prompt(
   "flux-query-examples",
   {},
-  () => ({
-    messages: [{
-      role: "user",
-      content: {
-        type: "text",
-        text: `Here are some example Flux queries for InfluxDB:
+  async () => {
+    console.log(`=== FLUX-QUERY-EXAMPLES PROMPT CALLED ===`);
+
+    // Simple, direct approach - no dependencies
+    const promptResponse = {
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: `Here are some example Flux queries for InfluxDB:
 
 1. Get data from the last 5 minutes:
 \`\`\`flux
@@ -580,21 +670,29 @@ join(tables: {cpu: cpu, mem: mem}, on: ["_time", "host"])
 \`\`\`
 
 Please adjust these queries to match your specific bucket names, measurements, and requirements.`,
-      },
-    }],
-  }),
+        },
+      }],
+    };
+
+    console.log(`=== FLUX-QUERY-EXAMPLES PROMPT COMPLETED SUCCESSFULLY ===`);
+    return promptResponse;
+  },
 );
 
 // Prompt: Line Protocol Guide
 server.prompt(
   "line-protocol-guide",
   {},
-  () => ({
-    messages: [{
-      role: "user",
-      content: {
-        type: "text",
-        text: `# InfluxDB Line Protocol Guide
+  async () => {
+    console.log(`=== LINE-PROTOCOL-GUIDE PROMPT CALLED ===`);
+
+    // Simple, direct approach - no dependencies
+    const promptResponse = {
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: `# InfluxDB Line Protocol Guide
 
 Line protocol is the text format for writing data to InfluxDB. It follows this structure:
 
@@ -642,9 +740,13 @@ readings,device=thermostat temperature=72.1,active=true,status="normal" 16310252
 - At least one field is required per point
 - Special characters (spaces, commas) in measurement names, tag keys, tag values, or field keys must be escaped
 - Timestamps should match the specified precision`,
-      },
-    }],
-  }),
+        },
+      }],
+    };
+
+    console.log(`=== LINE-PROTOCOL-GUIDE PROMPT COMPLETED SUCCESSFULLY ===`);
+    return promptResponse;
+  },
 );
 
 // Add a global error handler
@@ -657,12 +759,10 @@ process.on("unhandledRejection", (reason, promise) => {
 console.log("Starting MCP server with stdio transport...");
 const transport = new StdioServerTransport();
 
-// Add a delay before connecting to ensure we don't miss any initial messages
-setTimeout(() => {
-  console.log("Connecting server to transport...");
-  server.connect(transport).catch((err) => {
-    console.error("Error starting MCP server:", err);
-    process.exit(1);
-  });
-  console.log("Server connected to transport");
-}, 100); // Small delay to make sure everything is initialized
+// Connect immediately without any setTimeout
+console.log("Connecting server to transport...");
+server.connect(transport).catch((err) => {
+  console.error("Error starting MCP server:", err);
+  process.exit(1);
+});
+console.log("Server connected to transport");
