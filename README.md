@@ -1,5 +1,7 @@
 # InfluxDB MCP Server
 
+[![smithery badge](https://smithery.ai/badge/@idoru/influxdb-mcp-server)](https://smithery.ai/server/@idoru/influxdb-mcp-server)
+
 A Model Context Protocol (MCP) server that exposes access to an InfluxDB instance using the InfluxDB OSS API v2. Mostly built with Claude Code.
 
 ## Features
@@ -58,6 +60,14 @@ The server requires these environment variables:
 - `INFLUXDB_ORG` (optional): Default organization name for certain operations
 
 ## Installation
+
+### Installing via Smithery
+
+To install InfluxDB MCP Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@idoru/influxdb-mcp-server):
+
+```bash
+npx -y @smithery/cli install @idoru/influxdb-mcp-server --client claude
+```
 
 ### Option 1: Run with npx (recommended)
 
