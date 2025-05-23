@@ -1,0 +1,28 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - influxdbToken
+    properties:
+      influxdbToken:
+        type: string
+        description: Authentication token for the InfluxDB API
+      influxdbUrl:
+        type: string
+        default: http://localhost:8086
+        description: URL of the InfluxDB instance
+      influxdbOrg:
+        type: string
+        description: Default organization name for operations
+  commandFunction:
+    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
+    |-
+    (config) => ({ command: 'node', args: ['src/index.js'], env: { INFLUXDB_TOKEN: config.influxdbToken, INFLUXDB_URL: config.influxdbUrl, INFLUXDB_ORG: config.influxdbOrg } })
+  exampleConfig:
+    influxdbToken: example-token
+    influxdbUrl: http://localhost:8086
+    influxdbOrg: example_org
