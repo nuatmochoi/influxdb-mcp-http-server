@@ -268,9 +268,10 @@ MIT License - see LICENSE file for details.
 
 ## 🙏 Acknowledgments
 
+- **Original InfluxDB MCP Server**: Created by [Sam Coward (idoru)](https://github.com/idoru/influxdb-mcp-server)
+- **HTTP Transport Extensions**: Added by nuatmochoi
 - Built with [Model Context Protocol SDK](https://github.com/modelcontextprotocol/sdk)
 - HTTP transport based on MCP Streamable HTTP specification
-- Original STDIO implementation inspired by various MCP server examples
 
 ---
 

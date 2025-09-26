@@ -20,16 +20,19 @@
     "timeseries"
   ],
   "author": "Sam Coward <idoru42@gmail.com> (https://github.com/idoru)",
+  "contributors": [
+    "nuatmochoi (HTTP transport extensions)"
+  ],
   "license": "MIT",
   "description": "A Model Context Protocol (MCP) server for InfluxDB that enables Claude and other AI assistants to work with time-series data",
   "repository": {
     "type": "git",
-    "url": "https://github.com/idoru/influxdb-mcp-server.git"
+    "url": "https://github.com/nuatmochoi/influxdb-mcp-http-server.git"
   },
   "bugs": {
-    "url": "https://github.com/idoru/influxdb-mcp-server/issues"
+    "url": "https://github.com/nuatmochoi/influxdb-mcp-http-server/issues"
   },
-  "homepage": "https://github.com/idoru/influxdb-mcp-server#readme",
+  "homepage": "https://github.com/nuatmochoi/influxdb-mcp-http-server#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.1",
     "node-fetch": "^3.3.2",
