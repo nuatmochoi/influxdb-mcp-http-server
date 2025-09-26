@@ -159,51 +159,85 @@ httpTransport.onMessage = async (message) => {
           tools: [
             {
               name: "write-data",
-              description: "Write data to InfluxDB",
+              description: "Write time-series data to InfluxDB using line protocol format. Line protocol is a text-based format for writing points to InfluxDB. Format: 'measurement,tag1=value1,tag2=value2 field1=value1,field2=value2 [timestamp]'. Example: 'temperature,location=office,sensor=A temp=23.5 1609459200000000000'",
               inputSchema: {
                 type: "object",
                 properties: {
-                  org: { type: "string", description: "Organization name" },
-                  bucket: { type: "string", description: "Bucket name" },
-                  data: { type: "string", description: "Data in InfluxDB line protocol format" },
-                  precision: { type: "string", enum: ["ns", "us", "ms", "s"], description: "Timestamp precision" }
+                  org: {
+                    type: "string",
+                    description: "InfluxDB organization name (logical workspace for users, buckets, and resources)"
+                  },
+                  bucket: {
+                    type: "string",
+                    description: "InfluxDB bucket name (container for time-series data with retention policy)"
+                  },
+                  data: {
+                    type: "string",
+                    description: "Data in InfluxDB line protocol format. Each line represents one data point. Format: 'measurement[,tag_set] field_set [timestamp]'. Multiple lines separated by newlines for batch writes."
+                  },
+                  precision: {
+                    type: "string",
+                    enum: ["ns", "us", "ms", "s"],
+                    description: "Timestamp precision: 'ns' (nanoseconds), 'us' (microseconds), 'ms' (milliseconds), 's' (seconds). Defaults to nanoseconds if not specified."
+                  }
                 },
                 required: ["org", "bucket", "data"]
               }
             },
             {
               name: "query-data",
-              description: "Query data from InfluxDB",
+              description: "Execute Flux queries to retrieve and analyze time-series data from InfluxDB. Flux is InfluxDB's functional data scripting language for querying, analyzing, and acting on time-series data. Supports filtering, aggregation, transformations, and more. Example query: 'from(bucket: \"my-bucket\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"temperature\")'",
               inputSchema: {
                 type: "object",
                 properties: {
-                  org: { type: "string", description: "Organization name" },
-                  query: { type: "string", description: "Flux query string" }
+                  org: {
+                    type: "string",
+                    description: "InfluxDB organization name that contains the data to query"
+                  },
+                  query: {
+                    type: "string",
+                    description: "Flux query string. Must start with from() function to specify bucket. Common patterns: range() for time filtering, filter() for field/tag filtering, aggregateWindow() for downsampling, group() for grouping data. Returns CSV-formatted results."
+                  }
                 },
                 required: ["org", "query"]
               }
             },
             {
               name: "create-bucket",
-              description: "Create a new InfluxDB bucket",
+              description: "Create a new InfluxDB bucket (data container). Buckets are containers for time-series data with configurable retention policies. Each bucket belongs to an organization and stores measurements with automatic data expiration based on retention rules. Used to organize and manage data lifecycle.",
               inputSchema: {
                 type: "object",
                 properties: {
-                  name: { type: "string", description: "Bucket name" },
-                  orgID: { type: "string", description: "Organization ID" },
-                  retentionPeriodSeconds: { type: "number", description: "Retention period in seconds" }
+                  name: {
+                    type: "string",
+                    description: "Unique bucket name within the organization. Use descriptive names like 'sensors-prod', 'metrics-dev', etc."
+                  },
+                  orgID: {
+                    type: "string",
+                    description: "Organization ID (not name) that will own this bucket. Get this from the organizations list or create-org response."
+                  },
+                  retentionPeriodSeconds: {
+                    type: "number",
+                    description: "Optional data retention period in seconds. Data older than this will be automatically deleted. Examples: 3600 (1 hour), 86400 (1 day), 2592000 (30 days). If not specified, data is kept indefinitely."
+                  }
                 },
                 required: ["name", "orgID"]
               }
             },
             {
               name: "create-org",
-              description: "Create a new InfluxDB organization",
+              description: "Create a new InfluxDB organization (workspace). Organizations are logical workspaces that contain users, buckets, dashboards, and other resources. They provide multi-tenancy and access control. Each organization has its own isolated data and user management. Typically represents a company, team, or project.",
               inputSchema: {
                 type: "object",
                 properties: {
-                  name: { type: "string", description: "Organization name" },
-                  description: { type: "string", description: "Organization description" }
+                  name: {
+                    type: "string",
+                    description: "Unique organization name. Use descriptive names like 'my-company', 'dev-team', 'production-env'. Must be unique across the InfluxDB instance."
+                  },
+                  description: {
+                    type: "string",
+                    description: "Optional human-readable description of the organization's purpose, team, or use case. Example: 'Production monitoring for web services'"
+                  }
                 },
                 required: ["name"]
               }

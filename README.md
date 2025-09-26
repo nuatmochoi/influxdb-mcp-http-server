@@ -39,19 +39,171 @@ The server exposes these resources:
 
 ## 🔧 Tools
 
-Available tools:
+### Data Operations
 
-1. **`write-data`**: Write time-series data in line protocol format
-2. **`query-data`**: Execute Flux queries
-3. **`create-bucket`**: Create a new bucket
-4. **`create-org`**: Create a new organization
+1. **`write-data`**: Write time-series data using InfluxDB line protocol
+   - **Purpose**: Insert time-series data points into InfluxDB
+   - **Format**: `measurement[,tag_set] field_set [timestamp]`
+   - **Example**: `temperature,location=office,sensor=A temp=23.5 1609459200000000000`
+   - **Parameters**:
+     - `org`: Organization name (workspace)
+     - `bucket`: Bucket name (data container)
+     - `data`: Line protocol formatted data (single line or batch)
+     - `precision`: Optional timestamp precision (ns/us/ms/s)
+
+2. **`query-data`**: Execute Flux queries to retrieve and analyze data
+   - **Purpose**: Query and analyze time-series data using Flux language
+   - **Example**: `from(bucket: "sensors") |> range(start: -1h) |> filter(fn: (r) => r._measurement == "temperature")`
+   - **Parameters**:
+     - `org`: Organization name containing the data
+     - `query`: Flux query string (starts with `from()` function)
+   - **Returns**: CSV-formatted query results
+
+### Administrative Operations
+
+3. **`create-bucket`**: Create data containers with retention policies
+   - **Purpose**: Create buckets to organize and store time-series data
+   - **Use Cases**: Separate environments (dev/prod), data types, retention needs
+   - **Parameters**:
+     - `name`: Unique bucket name (e.g., "sensors-prod", "metrics-dev")
+     - `orgID`: Organization ID (from organization list)
+     - `retentionPeriodSeconds`: Optional auto-deletion period (3600=1h, 86400=1d)
+
+4. **`create-org`**: Create organizational workspaces
+   - **Purpose**: Create logical workspaces for multi-tenancy and access control
+   - **Use Cases**: Company divisions, teams, projects, environments
+   - **Parameters**:
+     - `name`: Unique organization name (e.g., "my-company", "dev-team")
+     - `description`: Optional purpose description
 
 ## 📝 Prompts
 
 Template prompts:
 
-1. **`flux-query-examples`**: Common Flux query patterns
-2. **`line-protocol-guide`**: InfluxDB line protocol format guide
+1. **`flux-query-examples`**: Common Flux query patterns and examples
+2. **`line-protocol-guide`**: Complete guide to InfluxDB line protocol format
+
+## 📚 Usage Examples
+
+### Basic Data Workflow
+
+```bash
+# 1. Create organization
+curl -X POST http://127.0.0.1:3001/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "create-org",
+      "arguments": {
+        "name": "my-company",
+        "description": "Production monitoring organization"
+      }
+    }
+  }'
+
+# 2. Create bucket (use orgID from previous response)
+curl -X POST http://127.0.0.1:3001/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "create-bucket",
+      "arguments": {
+        "name": "sensors",
+        "orgID": "YOUR_ORG_ID_HERE",
+        "retentionPeriodSeconds": 2592000
+      }
+    }
+  }'
+
+# 3. Write data
+curl -X POST http://127.0.0.1:3001/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "write-data",
+      "arguments": {
+        "org": "my-company",
+        "bucket": "sensors",
+        "data": "temperature,location=office,sensor=A temp=23.5,humidity=65.2\ntemperature,location=warehouse,sensor=B temp=18.3,humidity=72.1"
+      }
+    }
+  }'
+
+# 4. Query data
+curl -X POST http://127.0.0.1:3001/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "query-data",
+      "arguments": {
+        "org": "my-company",
+        "query": "from(bucket: \"sensors\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"temperature\")"
+      }
+    }
+  }'
+```
+
+### Line Protocol Examples
+
+```
+# Simple measurement
+temperature value=23.5
+
+# With tags
+temperature,location=office,sensor=A value=23.5
+
+# With multiple fields
+weather,location=office temp=23.5,humidity=65.2,pressure=1013.25
+
+# With timestamp (nanoseconds)
+temperature,location=office value=23.5 1609459200000000000
+
+# Batch write (multiple lines)
+temperature,location=office value=23.5 1609459200000000000
+temperature,location=warehouse value=18.3 1609459260000000000
+humidity,location=office value=65.2 1609459200000000000
+```
+
+### Common Flux Query Patterns
+
+```flux
+# Basic range query
+from(bucket: "sensors")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "temperature")
+
+# Aggregation over time windows
+from(bucket: "sensors")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "temperature")
+  |> aggregateWindow(every: 1h, fn: mean)
+
+# Filter by tags and group by location
+from(bucket: "sensors")
+  |> range(start: -6h)
+  |> filter(fn: (r) => r._measurement == "temperature")
+  |> filter(fn: (r) => r.location != "")
+  |> group(columns: ["location"])
+  |> mean()
+
+# Multiple measurements
+from(bucket: "sensors")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "temperature" or r._measurement == "humidity")
+  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+```
 
 ## ⚙️ Configuration
 
