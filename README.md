@@ -76,6 +76,51 @@ The server exposes these resources:
      - `name`: Unique organization name (e.g., "my-company", "dev-team")
      - `description`: Optional purpose description
 
+### Data Exploration Operations
+
+5. **`list-databases`**: List all available buckets/databases
+   - **Purpose**: Get overview of all data containers in InfluxDB
+   - **Returns**: Bucket names, IDs, retention policies, creation dates
+   - **Parameters**: None
+
+6. **`get-measurements`**: List measurements in a specific bucket
+   - **Purpose**: Discover what data tables are available for querying
+   - **Parameters**:
+     - `org`: Organization name
+     - `bucket`: Bucket name to explore
+   - **Returns**: All measurement names from the last 30 days
+
+7. **`get-measurement-schema`**: Get detailed schema for a measurement
+   - **Purpose**: Understand the structure of your time-series data
+   - **Parameters**:
+     - `org`: Organization name
+     - `bucket`: Bucket name
+     - `measurement`: Measurement name to analyze
+   - **Returns**: Field keys (values), tag keys (metadata), usage examples
+
+8. **`get-bucket-info`**: Get comprehensive bucket information
+   - **Purpose**: View bucket configuration, statistics, and metadata
+   - **Parameters**:
+     - `bucketName`: Name of bucket to inspect
+     - `org`: Organization name (for statistics)
+   - **Returns**: Retention policy, data point count, creation info
+
+9. **`get-tag-values`**: Get all values for a specific tag key
+   - **Purpose**: Discover available filter options for queries
+   - **Parameters**:
+     - `org`: Organization name
+     - `bucket`: Bucket name
+     - `tagKey`: Tag key to get values for
+     - `measurement`: Optional measurement filter
+   - **Returns**: All unique values for the tag, sorted alphabetically
+
+### System Operations
+
+10. **`health-check`**: Check InfluxDB server health and connectivity
+    - **Purpose**: Monitor server status and troubleshoot connection issues
+    - **Parameters**: None
+    - **Returns**: Connection status, response time, server version, build info
+
 ## 📝 Prompts
 
 Template prompts:

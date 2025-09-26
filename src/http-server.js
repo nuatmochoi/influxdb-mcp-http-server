@@ -23,6 +23,12 @@ import { writeData } from "./handlers/writeDataTool.js";
 import { queryData } from "./handlers/queryDataTool.js";
 import { createBucket } from "./handlers/createBucketTool.js";
 import { createOrg } from "./handlers/createOrgTool.js";
+import { listDatabases } from "./handlers/listDatabasesTool.js";
+import { healthCheck } from "./handlers/healthCheckTool.js";
+import { getMeasurements } from "./handlers/getMeasurementsTool.js";
+import { getMeasurementSchema } from "./handlers/getMeasurementSchemaTool.js";
+import { getBucketInfo } from "./handlers/getBucketInfoTool.js";
+import { getTagValues } from "./handlers/getTagValuesTool.js";
 
 // Import prompt handlers
 import { fluxQueryExamplesPrompt } from "./prompts/fluxQueryExamplesPrompt.js";
@@ -241,6 +247,108 @@ httpTransport.onMessage = async (message) => {
                 },
                 required: ["name"]
               }
+            },
+            {
+              name: "list-databases",
+              description: "List all InfluxDB buckets/databases with metadata information including retention policies, creation dates, and basic statistics.",
+              inputSchema: {
+                type: "object",
+                properties: {},
+                required: []
+              }
+            },
+            {
+              name: "health-check",
+              description: "Check InfluxDB server connection, health status, version information, and response time. Useful for monitoring and troubleshooting.",
+              inputSchema: {
+                type: "object",
+                properties: {},
+                required: []
+              }
+            },
+            {
+              name: "get-measurements",
+              description: "List all measurements (tables) in a specific bucket. Shows what data is available for querying in the last 30 days.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  org: {
+                    type: "string",
+                    description: "Organization name that contains the bucket"
+                  },
+                  bucket: {
+                    type: "string",
+                    description: "Bucket name to list measurements from"
+                  }
+                },
+                required: ["org", "bucket"]
+              }
+            },
+            {
+              name: "get-measurement-schema",
+              description: "Get detailed schema information for a specific measurement including all field keys (values) and tag keys (indexed metadata) with usage examples.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  org: {
+                    type: "string",
+                    description: "Organization name"
+                  },
+                  bucket: {
+                    type: "string",
+                    description: "Bucket name containing the measurement"
+                  },
+                  measurement: {
+                    type: "string",
+                    description: "Measurement name to get schema for"
+                  }
+                },
+                required: ["org", "bucket", "measurement"]
+              }
+            },
+            {
+              name: "get-bucket-info",
+              description: "Get comprehensive information about a specific bucket including configuration, retention policy, statistics, and creation details.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  bucketName: {
+                    type: "string",
+                    description: "Name of the bucket to get information for"
+                  },
+                  org: {
+                    type: "string",
+                    description: "Organization name (used for statistics queries)"
+                  }
+                },
+                required: ["bucketName", "org"]
+              }
+            },
+            {
+              name: "get-tag-values",
+              description: "Get all unique values for a specific tag key, optionally filtered by measurement. Useful for discovering available filter options.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  org: {
+                    type: "string",
+                    description: "Organization name"
+                  },
+                  bucket: {
+                    type: "string",
+                    description: "Bucket name to search in"
+                  },
+                  tagKey: {
+                    type: "string",
+                    description: "Tag key to get values for (e.g., 'location', 'sensor', 'host')"
+                  },
+                  measurement: {
+                    type: "string",
+                    description: "Optional: specific measurement to filter by"
+                  }
+                },
+                required: ["org", "bucket", "tagKey"]
+              }
             }
           ]
         }
@@ -264,6 +372,24 @@ httpTransport.onMessage = async (message) => {
             break;
           case 'create-org':
             result = await createOrg(args);
+            break;
+          case 'list-databases':
+            result = await listDatabases(args);
+            break;
+          case 'health-check':
+            result = await healthCheck(args);
+            break;
+          case 'get-measurements':
+            result = await getMeasurements(args);
+            break;
+          case 'get-measurement-schema':
+            result = await getMeasurementSchema(args);
+            break;
+          case 'get-bucket-info':
+            result = await getBucketInfo(args);
+            break;
+          case 'get-tag-values':
+            result = await getTagValues(args);
             break;
           default:
             throw new Error(`Unknown tool: ${name}`);
