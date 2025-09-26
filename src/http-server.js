@@ -39,7 +39,7 @@ configureLogger();
 validateEnvironment();
 
 const PORT = process.env.PORT || 3001;
-const HOST = process.env.HOST || '127.0.0.1'; // Bind to localhost for security
+const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for deployment
 
 // Create Express app
 const app = express();
@@ -136,7 +136,7 @@ server.prompt("line-protocol-guide", {}, lineProtocolGuidePrompt);
 const httpTransport = new HttpTransport();
 
 // Configure MCP server to handle HTTP requests
-httpTransport.onMessage = async (message) => {
+httpTransport.messageHandler = async (message) => {
   try {
     if (message.method === 'initialize') {
       return {
