@@ -44,29 +44,12 @@ const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for deploy
 // Create Express app
 const app = express();
 
-// CORS configuration - be restrictive for security
+// CORS configuration - allow all origins
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    // Allow localhost for development
-    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
-      return callback(null, true);
-    }
-
-    // Add your production domains here
-    const allowedOrigins = [
-      'https://your-domain.com'
-    ];
-
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
+  origin: true, // Allow all origins
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'Cache-Control']
 };
 
 app.use(cors(corsOptions));
