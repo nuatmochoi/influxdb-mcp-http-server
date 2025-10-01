@@ -41,6 +41,235 @@ validateEnvironment();
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for deployment
 
+// Helper functions for genai-toolbox style handling
+async function getToolsList() {
+  return [
+    {
+      name: "write-data",
+      description: "Write time-series data to InfluxDB using line protocol format. Line protocol is a text-based format for writing points to InfluxDB. Format: 'measurement,tag1=value1,tag2=value2 field1=value1,field2=value2 [timestamp]'. Example: 'temperature,location=office,sensor=A temp=23.5 1609459200000000000'",
+      inputSchema: {
+        type: "object",
+        properties: {
+          org: {
+            type: "string",
+            description: "InfluxDB organization name (logical workspace for users, buckets, and resources)"
+          },
+          bucket: {
+            type: "string",
+            description: "InfluxDB bucket name (container for time-series data with retention policy)"
+          },
+          data: {
+            type: "string",
+            description: "Data in InfluxDB line protocol format. Each line represents one data point. Format: 'measurement[,tag_set] field_set [timestamp]'. Multiple lines separated by newlines for batch writes."
+          },
+          precision: {
+            type: "string",
+            enum: ["ns", "us", "ms", "s"],
+            description: "Timestamp precision: 'ns' (nanoseconds), 'us' (microseconds), 'ms' (milliseconds), 's' (seconds). Defaults to nanoseconds if not specified."
+          }
+        },
+        required: ["org", "bucket", "data"]
+      }
+    },
+    {
+      name: "query-data",
+      description: "Execute Flux queries to retrieve and analyze time-series data from InfluxDB. Flux is InfluxDB's functional data scripting language for querying, analyzing, and acting on time-series data. Supports filtering, aggregation, transformations, and more. Example query: 'from(bucket: \"my-bucket\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"temperature\")'",
+      inputSchema: {
+        type: "object",
+        properties: {
+          org: {
+            type: "string",
+            description: "InfluxDB organization name that contains the data to query"
+          },
+          query: {
+            type: "string",
+            description: "Flux query string. Must start with from() function to specify bucket. Common patterns: range() for time filtering, filter() for field/tag filtering, aggregateWindow() for downsampling, group() for grouping data. Returns CSV-formatted results."
+          }
+        },
+        required: ["org", "query"]
+      }
+    },
+    {
+      name: "create-bucket",
+      description: "Create a new InfluxDB bucket (data container). Buckets are containers for time-series data with configurable retention policies. Each bucket belongs to an organization and stores measurements with automatic data expiration based on retention rules. Used to organize and manage data lifecycle.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Unique bucket name within the organization. Use descriptive names like 'sensors-prod', 'metrics-dev', etc."
+          },
+          orgID: {
+            type: "string",
+            description: "Organization ID (not name) that will own this bucket. Get this from the organizations list or create-org response."
+          },
+          retentionPeriodSeconds: {
+            type: "number",
+            description: "Optional data retention period in seconds. Data older than this will be automatically deleted. Examples: 3600 (1 hour), 86400 (1 day), 2592000 (30 days). If not specified, data is kept indefinitely."
+          }
+        },
+        required: ["name", "orgID"]
+      }
+    },
+    {
+      name: "create-org",
+      description: "Create a new InfluxDB organization (workspace). Organizations are logical workspaces that contain users, buckets, dashboards, and other resources. They provide multi-tenancy and access control. Each organization has its own isolated data and user management. Typically represents a company, team, or project.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Unique organization name. Use descriptive names like 'my-company', 'dev-team', 'production-env'. Must be unique across the InfluxDB instance."
+          },
+          description: {
+            type: "string",
+            description: "Optional human-readable description of the organization's purpose, team, or use case. Example: 'Production monitoring for web services'"
+          }
+        },
+        required: ["name"]
+      }
+    },
+    {
+      name: "list-databases",
+      description: "List all InfluxDB buckets/databases with metadata information including retention policies, creation dates, and basic statistics.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        required: []
+      }
+    },
+    {
+      name: "health-check",
+      description: "Check InfluxDB server connection, health status, version information, and response time. Useful for monitoring and troubleshooting.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        required: []
+      }
+    },
+    {
+      name: "get-measurements",
+      description: "List all measurements (tables) in a specific bucket. Shows what data is available for querying in the last 30 days.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          org: {
+            type: "string",
+            description: "Organization name that contains the bucket"
+          },
+          bucket: {
+            type: "string",
+            description: "Bucket name to list measurements from"
+          }
+        },
+        required: ["org", "bucket"]
+      }
+    },
+    {
+      name: "get-measurement-schema",
+      description: "Get detailed schema information for a specific measurement including all field keys (values) and tag keys (indexed metadata) with usage examples.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          org: {
+            type: "string",
+            description: "Organization name"
+          },
+          bucket: {
+            type: "string",
+            description: "Bucket name containing the measurement"
+          },
+          measurement: {
+            type: "string",
+            description: "Measurement name to get schema for"
+          }
+        },
+        required: ["org", "bucket", "measurement"]
+      }
+    },
+    {
+      name: "get-bucket-info",
+      description: "Get comprehensive information about a specific bucket including configuration, retention policy, statistics, and creation details.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          bucketName: {
+            type: "string",
+            description: "Name of the bucket to get information for"
+          },
+          org: {
+            type: "string",
+            description: "Organization name (used for statistics queries)"
+          }
+        },
+        required: ["bucketName", "org"]
+      }
+    },
+    {
+      name: "get-tag-values",
+      description: "Get all unique values for a specific tag key, optionally filtered by measurement. Useful for discovering available filter options.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          org: {
+            type: "string",
+            description: "Organization name"
+          },
+          bucket: {
+            type: "string",
+            description: "Bucket name to search in"
+          },
+          tagKey: {
+            type: "string",
+            description: "Tag key to get values for (e.g., 'location', 'sensor', 'host')"
+          },
+          measurement: {
+            type: "string",
+            description: "Optional: specific measurement to filter by"
+          }
+        },
+        required: ["org", "bucket", "tagKey"]
+      }
+    }
+  ];
+}
+
+async function handleToolCall(params) {
+  const { name, arguments: args } = params;
+
+  try {
+    switch (name) {
+      case 'write-data':
+        return await writeData(args);
+      case 'query-data':
+        return await queryData(args);
+      case 'create-bucket':
+        return await createBucket(args);
+      case 'create-org':
+        return await createOrg(args);
+      case 'list-databases':
+        return await listDatabases(args);
+      case 'health-check':
+        return await healthCheck(args);
+      case 'get-measurements':
+        return await getMeasurements(args);
+      case 'get-measurement-schema':
+        return await getMeasurementSchema(args);
+      case 'get-bucket-info':
+        return await getBucketInfo(args);
+      case 'get-tag-values':
+        return await getTagValues(args);
+      default:
+        throw new Error(`Unknown tool: ${name}`);
+    }
+  } catch (error) {
+    return {
+      error: error.message,
+      isError: true
+    };
+  }
+}
+
 // Create Express app
 const app = express();
 
@@ -530,8 +759,99 @@ httpTransport.onMessage(async (message) => {
 });
 
 // Main MCP endpoint
-app.all('/mcp', async (req, res) => {
-  await httpTransport.handleRequest(req, res);
+// Alternative direct MCP endpoint (genai-toolbox style)
+app.post('/mcp', async (req, res) => {
+  try {
+    // Set CORS headers for maximum compatibility
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', '*');
+
+    const message = req.body;
+
+    // Handle initialize request
+    if (message.method === 'initialize') {
+      return res.json({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          protocolVersion: "2024-11-05",
+          capabilities: {
+            tools: {},
+            resources: {},
+            prompts: {}
+          },
+          serverInfo: {
+            name: "InfluxDB MCP Server",
+            version: "0.1.1"
+          }
+        }
+      });
+    }
+
+    // Handle tools/list request
+    if (message.method === 'tools/list') {
+      return res.json({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          tools: await getToolsList()
+        }
+      });
+    }
+
+    // Handle tool calls
+    if (message.method === 'tools/call') {
+      const result = await handleToolCall(message.params);
+      return res.json({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: result
+      });
+    }
+
+    // Fallback to original transport
+    await httpTransport.handleRequest(req, res);
+  } catch (error) {
+    console.error('Error in MCP endpoint:', error);
+    res.status(500).json({
+      jsonrpc: "2.0",
+      id: req.body?.id,
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: error.message
+      }
+    });
+  }
+});
+
+// GET endpoint for MCP info (genai-toolbox style)
+app.get('/mcp', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.json({
+    name: "InfluxDB MCP Server",
+    version: "0.1.1",
+    transport: "http",
+    capabilities: {
+      tools: {},
+      resources: {},
+      prompts: {}
+    },
+    protocolVersion: "2024-11-05",
+    serverInfo: {
+      name: "InfluxDB MCP Server",
+      version: "0.1.1"
+    }
+  });
+});
+
+// OPTIONS for CORS preflight
+app.options('/mcp', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', '*');
+  res.sendStatus(200);
 });
 
 // Health check endpoint
