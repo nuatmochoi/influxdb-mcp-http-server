@@ -136,7 +136,7 @@ server.prompt("line-protocol-guide", {}, lineProtocolGuidePrompt);
 const httpTransport = new HttpTransport();
 
 // Configure MCP server to handle HTTP requests
-httpTransport.messageHandler = async (message) => {
+httpTransport.onMessage(async (message) => {
   try {
     if (message.method === 'initialize') {
       return {
@@ -544,7 +544,7 @@ httpTransport.messageHandler = async (message) => {
       }
     };
   }
-};
+});
 
 // Main MCP endpoint
 app.all('/mcp', async (req, res) => {
